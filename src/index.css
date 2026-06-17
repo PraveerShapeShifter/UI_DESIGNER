@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-slate-950 text-slate-100 font-sans;
+    margin: 0;
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  /*
+   * Layered "technical apparel pattern" background:
+   *  1. deep slate radial vignette
+   *  2. fine marker-paper grid (every 28px)
+   *  3. coarse blueprint grid (every 140px) in faint gold
+   * Kept at low opacity so foreground content stays the hero.
+   */
+  .pattern-bg {
+    background-color: #0b1120;
+    background-image:
+      radial-gradient(circle at 50% 0%, rgba(245, 179, 1, 0.10), transparent 55%),
+      radial-gradient(circle at 85% 90%, rgba(37, 99, 235, 0.10), transparent 45%),
+      linear-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+      linear-gradient(rgba(245, 179, 1, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(245, 179, 1, 0.06) 1px, transparent 1px);
+    background-size:
+      100% 100%,
+      100% 100%,
+      28px 28px,
+      28px 28px,
+      140px 140px,
+      140px 140px;
+  }
+
+  /* Faint diagonal "fabric weave" / dart line motif overlaid on the grid. */
+  .weave-overlay {
+    background-image:
+      repeating-linear-gradient(
+        45deg,
+        rgba(148, 163, 184, 0.035) 0px,
+        rgba(148, 163, 184, 0.035) 1px,
+        transparent 1px,
+        transparent 22px
+      );
+  }
+
+  /* Animated dashed "cutting line" accent used on the drop zone border feel. */
+  .gold-glow {
+    box-shadow:
+      0 0 0 1px rgba(245, 179, 1, 0.4),
+      0 0 32px -4px rgba(245, 179, 1, 0.35),
+      0 20px 50px -20px rgba(0, 0, 0, 0.7);
+  }
+}
