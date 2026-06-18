@@ -4,16 +4,16 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Safety gold accent
-        gold: {
-          50: '#fffbeb',
-          100: '#fef3c7',
-          200: '#fde68a',
-          300: '#fcd34d',
-          400: '#fbbf24',
-          500: '#f5b301',
-          600: '#d99a00',
-          700: '#b37c00',
+        // ShapeShifter brand red (#E46161), as a full accent scale
+        brand: {
+          50: '#fdf2f2',
+          100: '#fbe5e5',
+          200: '#f6cccc',
+          300: '#efa8a8',
+          400: '#ea8a8a',
+          500: '#E46161',
+          600: '#d84747',
+          700: '#bd3535',
         },
       },
       fontFamily: {

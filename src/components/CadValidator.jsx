@@ -22,9 +22,11 @@ import {
   FileSpreadsheet,
   Files,
   FileWarning,
-  FlaskConical,
   FileDown,
   HardDrive,
+  Info,
+  ListChecks,
+  XCircle,
 } from 'lucide-react'
 
 /**
@@ -114,6 +116,29 @@ const GARMENT_STYLES = [
 ]
 
 const SIZE_BREAK = 'M' // graded base size, just for realistic file names
+
+// Maximum number of cut plans a user is allowed to upload / validate.
+const MAX_CUTPLANS = 5
+
+// Persisted log of every cut plan that has been validated, with its pass/fail
+// verdict (and, on failure, the reason), kept across reloads so both the header
+// status bar and the side status panel reflect real progress.
+const CUTPLANS_KEY = 'tvc.cutplans'
+function readCutplans() {
+  try {
+    const arr = JSON.parse(localStorage.getItem(CUTPLANS_KEY) || '[]')
+    return Array.isArray(arr) ? arr.slice(0, MAX_CUTPLANS) : []
+  } catch {
+    return []
+  }
+}
+function saveCutplans(list) {
+  try {
+    localStorage.setItem(CUTPLANS_KEY, JSON.stringify(list))
+  } catch {
+    /* storage unavailable — keep the in-memory list */
+  }
+}
 
 const randInt = (min, max) => min + Math.floor(Math.random() * (max - min + 1))
 const pick = (arr) => arr[randInt(0, arr.length - 1)]
@@ -373,8 +398,12 @@ export default function CadValidator() {
   const [isDragging, setIsDragging] = useState(false)
   const [hint, setHint] = useState('')
   const [outcome, setOutcome] = useState('fail') // demo toggle: 'fail' | 'pass'
+  // Persistent log of validated cut plans (name + pass/fail verdict + reason).
+  const [cutplans, setCutplans] = useState(readCutplans)
+  const passedCount = cutplans.filter((c) => c.status === 'pass').length
   const [driveLoading, setDriveLoading] = useState(false)
   const [drivePickerOpen, setDrivePickerOpen] = useState(false)
+  const [infoOpen, setInfoOpen] = useState(false)
   const driveConfigured = isDriveConfigured()
   // Seed from localStorage so a returning user shows as already connected.
   const [drive, setDrive] = useState(() =>
@@ -391,8 +420,27 @@ export default function CadValidator() {
     if (inputRef.current) inputRef.current.value = ''
   }, [])
 
+  // Append a validated cut plan to the log and persist it.
+  const recordCutplan = useCallback((entry) => {
+    setCutplans((prev) => {
+      const next = [...prev, entry].slice(0, MAX_CUTPLANS)
+      saveCutplans(next)
+      return next
+    })
+  }, [])
+
+  // Clear the cut-plan log so the user can start a fresh batch of 5.
+  const clearCutplans = useCallback(() => {
+    setCutplans([])
+    saveCutplans([])
+  }, [])
+
   const acceptFile = useCallback((incoming) => {
     if (!incoming) return
+    if (cutplans.length >= MAX_CUTPLANS) {
+      setHint(`You can upload a maximum of ${MAX_CUTPLANS} cut plans. Clear the list to start a new batch.`)
+      return
+    }
     if (!isZip(incoming)) {
       setHint('Only .zip archives are supported. Please export your CAD package as a .zip.')
       return
@@ -401,7 +449,7 @@ export default function CadValidator() {
     setResult(null)
     setFile(incoming)
     setStatus('selected')
-  }, [])
+  }, [cutplans.length])
 
   // ----- Drag & drop -----
   const onDragOver = (e) => {
@@ -463,13 +511,6 @@ export default function CadValidator() {
     }
   }
 
-  // ----- Demo sample packages (built in-memory so stakeholders can click through) -----
-  // Each click picks a random style and a varying set of pieces, with realistic
-  // Gerber file names and file sizes, so no two demo runs look identical.
-  const loadSample = async (kind) => {
-    acceptFile(await buildPackageZip(pick(GARMENT_STYLES), kind))
-  }
-
   // ----- Validation -----
   const validate = async () => {
     if (!file || status === 'validating') return
@@ -479,6 +520,11 @@ export default function CadValidator() {
     if (info.corrupt) {
       setResult({ kind: 'corrupt' })
       setStatus('error')
+      recordCutplan({
+        name: file.name,
+        status: 'fail',
+        reason: 'Archive could not be read — it may be corrupt or not a valid .zip file.',
+      })
       return
     }
 
@@ -500,6 +546,11 @@ export default function CadValidator() {
     if (structural.length) {
       setResult({ kind: 'structure', structural, info })
       setStatus('error')
+      recordCutplan({
+        name: file.name,
+        status: 'fail',
+        reason: structural.map((s) => s.title).join('; '),
+      })
       return
     }
 
@@ -508,9 +559,18 @@ export default function CadValidator() {
     if (failedTmps.length) {
       setResult({ kind: 'tmp', failedTmps, info })
       setStatus('error')
+      recordCutplan({
+        name: file.name,
+        status: 'fail',
+        reason:
+          `${failedTmps.length} of ${info.tmpNames.length} Gerber (.tmp) file(s) failed — ` +
+          failedTmps.map((f) => `${f.name}: ${f.reason}`).join('; '),
+      })
     } else {
       setResult({ kind: 'success', info })
       setStatus('success')
+      // A cut plan only counts as passed once it has truly cleared validation.
+      recordCutplan({ name: file.name, status: 'pass' })
     }
   }
 
@@ -521,50 +581,95 @@ export default function CadValidator() {
   return (
     <div className="pattern-bg min-h-screen w-full">
       <div className="weave-overlay min-h-screen w-full">
-        <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col items-center px-5 py-10 sm:py-12">
+        <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center px-5 py-10 sm:py-12">
           {/* ---------- Brand bar ---------- */}
-          <div className="mb-8 flex w-full items-center justify-between">
-            <span className="inline-flex items-center rounded-lg bg-white px-3 py-1.5 shadow-md ring-1 ring-black/5">
-              <img src={shapeShifterLogo} alt="ShapeShifter" className="h-5 w-auto" />
-            </span>
-            <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
-              CAD Validation
-            </span>
-          </div>
-
-          {/* ---------- Header / Hero ---------- */}
-          <header className="mb-10 flex w-full flex-col items-center text-center">
-            <div className="mb-5 flex items-center gap-3">
-              <span className="grid h-12 w-12 place-items-center rounded-xl bg-gold-500 text-slate-950 shadow-lg shadow-gold-500/20 ring-1 ring-gold-300/40">
-                <Scissors className="h-6 w-6" strokeWidth={2.4} />
+          <div className="mb-8 flex w-full items-center gap-4">
+            {/* Left: ShapeShifter brand logo */}
+            <div className="flex flex-1 items-center justify-start">
+              <span className="inline-flex items-center rounded-lg bg-white px-3 py-1.5 shadow-md ring-1 ring-black/5">
+                <img src={shapeShifterLogo} alt="ShapeShifter" className="h-5 w-auto" />
+              </span>
+            </div>
+            {/* Center: product lockup */}
+            <div className="flex items-center justify-center gap-2.5">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-500 text-slate-950 shadow-lg shadow-brand-500/20 ring-1 ring-brand-300/40">
+                <Scissors className="h-5 w-5" strokeWidth={2.4} />
               </span>
               <div className="text-left">
-                <h1 className="text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
-                  ThreadValidate <span className="text-gold-400">CAD</span>
+                <h1 className="text-xl font-extrabold tracking-tight text-white sm:text-2xl">
+                  ThreadValidate <span className="text-brand-400">CAD</span>
                 </h1>
-                <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-400">
+                <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-400">
                   Pattern &amp; Marker Integrity Suite
                 </p>
               </div>
             </div>
-            <p className="max-w-xl text-balance text-sm leading-relaxed text-slate-300 sm:text-base">
-              Validate apparel CAD packages before they reach the cutting floor.
-              Upload a <span className="font-mono text-gold-300">.zip</span> containing your{' '}
-              <span className="font-mono text-gold-300">.xlsx</span> spec sheet and{' '}
-              <span className="font-mono text-gold-300">.tmp</span> Gerber files.
+            {/* Right: status bar + info */}
+            <div className="flex flex-1 items-center justify-end gap-2">
+              {/* Persistent readiness status bar — counts cut plans that have
+                  PASSED validation, so it reflects genuine readiness to submit. */}
+              <span
+                aria-live="polite"
+                title="Cut plans that have passed validation and are ready to submit"
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  passedCount > 0
+                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                    : 'border-slate-700 bg-slate-900/60 text-slate-400'
+                }`}
+              >
+                <CheckCircle2
+                  className={`h-3.5 w-3.5 ${passedCount > 0 ? 'text-emerald-400' : 'text-slate-500'}`}
+                />
+                {passedCount > 0 ? (
+                  <>
+                    <span className="text-emerald-200">{passedCount}</span> cut plan
+                    {passedCount > 1 ? 's' : ''} validated · ready to submit
+                  </>
+                ) : (
+                  'No cut plans validated yet'
+                )}
+              </span>
+              {/* Single, unobtrusive help affordance — purpose + how-to on demand. */}
+              <button
+                type="button"
+                onClick={() => setInfoOpen(true)}
+                aria-label="About this portal and how to use it"
+                title="What is this? How do I use it?"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-slate-700 bg-slate-900/60 text-slate-400 transition hover:border-brand-400/60 hover:text-brand-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+              >
+                <Info className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* ---------- Header / Hero ---------- */}
+          <header className="mb-8 flex w-full flex-col items-center text-center">
+            <p className="max-w-2xl text-balance text-lg font-semibold text-white sm:text-xl">
+              Welcome to ThreadValidate CAD 👋
             </p>
+            <p className="mt-2 max-w-2xl text-balance text-base leading-relaxed text-slate-300 sm:text-lg">
+              Validate apparel CAD packages before they reach the cutting floor.
+              Upload a <span className="font-mono text-brand-300">.zip</span> containing your{' '}
+              <span className="font-mono text-brand-300">Cut Plan(xlxs/pdf)</span>  and{' '}
+              <span className="font-mono text-brand-300">CAD Files</span>.
+            </p>
+            <span className="mt-4 inline-flex items-center gap-2 rounded-full border border-amber-400/40 bg-amber-400/10 px-4 py-2 text-sm font-semibold text-amber-200">
+              <Info className="h-4 w-4" />
+              You are allowed to upload a maximum of {MAX_CUTPLANS} cut plans
+            </span>
           </header>
 
-          {/* ---------- Card ---------- */}
-          <section className="w-full rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5 shadow-2xl shadow-black/40 backdrop-blur-sm sm:p-7">
+          {/* ---------- Card + status panel ---------- */}
+          <div className="flex w-full flex-col gap-6 lg:flex-row lg:items-start">
+          <section className="min-w-0 flex-1 rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5 shadow-2xl shadow-black/40 backdrop-blur-sm sm:p-7">
             {/* Demo controls */}
-            <div className="mb-5 space-y-3 rounded-lg border border-slate-700/60 bg-slate-950/40 p-3">
+            <div className="mb-5 rounded-lg border border-slate-700/60 bg-slate-950/40 p-3">
               <div className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-2 text-xs text-slate-400">
-                  <ShieldCheck className="h-3.5 w-3.5 text-gold-400" />
+                <span className="flex items-center gap-2 text-sm text-slate-400">
+                  <ShieldCheck className="h-4 w-4 text-brand-400" />
                   Demo mode — simulate Gerber result
                 </span>
-                <div className="flex rounded-md bg-slate-800 p-0.5 text-xs font-semibold">
+                <div className="flex rounded-md bg-slate-800 p-0.5 text-sm font-semibold">
                   <button
                     type="button"
                     onClick={() => setOutcome('fail')}
@@ -585,25 +690,6 @@ export default function CadValidator() {
                   </button>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3">
-                <span className="flex items-center gap-1.5 text-xs text-slate-500">
-                  <FlaskConical className="h-3.5 w-3.5" /> Load sample:
-                </span>
-                {[
-                  { kind: 'valid', label: 'Valid package' },
-                  { kind: 'no-xlsx', label: 'Missing .xlsx' },
-                  { kind: 'no-tmp', label: 'Missing .tmp' },
-                ].map((s) => (
-                  <button
-                    key={s.kind}
-                    type="button"
-                    onClick={() => loadSample(s.kind)}
-                    className="rounded-md border border-slate-700 bg-slate-800/60 px-2.5 py-1 text-xs font-medium text-slate-300 transition hover:border-gold-400/60 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400"
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
             </div>
 
             {/* ---------- Drop zone ---------- */}
@@ -616,33 +702,33 @@ export default function CadValidator() {
                 onDragLeave={onDragLeave}
                 onDrop={onDrop}
                 disabled={status === 'validating'}
-                className={`group relative flex w-full flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed px-6 py-12 text-center transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 sm:py-16 ${
+                className={`group relative flex min-h-[380px] w-full flex-col items-center justify-center gap-5 rounded-xl border-2 border-dashed px-6 py-20 text-center transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 sm:py-28 ${
                   isDragging
-                    ? 'gold-glow scale-[1.01] border-gold-400 bg-gold-500/10'
-                    : 'border-slate-600 bg-slate-950/30 hover:border-gold-400/70 hover:bg-slate-950/50'
+                    ? 'brand-glow scale-[1.01] border-brand-400 bg-brand-500/10'
+                    : 'border-slate-600 bg-slate-950/30 hover:border-brand-400/70 hover:bg-slate-950/50'
                 }`}
               >
                 <span
-                  className={`grid h-16 w-16 place-items-center rounded-full transition-all duration-200 ${
-                    isDragging ? 'bg-gold-500 text-slate-950' : 'bg-slate-800 text-gold-400 group-hover:bg-slate-700'
+                  className={`grid h-20 w-20 place-items-center rounded-full transition-all duration-200 ${
+                    isDragging ? 'bg-brand-500 text-slate-950' : 'bg-slate-800 text-brand-400 group-hover:bg-slate-700'
                   }`}
                 >
-                  <UploadCloud className="h-8 w-8" strokeWidth={2} />
+                  <UploadCloud className="h-10 w-10" strokeWidth={2} />
                 </span>
-                <span className="space-y-1">
-                  <span className="block text-base font-semibold text-white">
+                <span className="space-y-1.5">
+                  <span className="block text-xl font-semibold text-white">
                     {isDragging ? 'Release to upload' : 'Drag & drop your .zip here'}
                   </span>
-                  <span className="block text-sm text-slate-400">
+                  <span className="block text-base text-slate-400">
                     or{' '}
-                    <span className="font-medium text-gold-300 underline-offset-2 group-hover:underline">
+                    <span className="font-medium text-brand-300 underline-offset-2 group-hover:underline">
                       click to browse
                     </span>{' '}
                     your files
                   </span>
                 </span>
-                <span className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1 text-[11px] font-medium text-slate-400">
-                  <FileArchive className="h-3.5 w-3.5" /> Expects 1 × .xlsx and one or more .tmp files
+                <span className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/70 px-3.5 py-1.5 text-xs font-medium text-slate-400">
+                  <FileArchive className="h-4 w-4" /> Expects 1 × .xlsx and one or more CAD files in the zip
                 </span>
               </button>
 
@@ -653,7 +739,7 @@ export default function CadValidator() {
                       type="button"
                       onClick={connect}
                       disabled={driveLoading}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400 disabled:cursor-wait disabled:opacity-70"
+                      className="flex w-full items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 disabled:cursor-wait disabled:opacity-70"
                     >
                       {driveLoading ? (
                         <>
@@ -661,7 +747,7 @@ export default function CadValidator() {
                         </>
                       ) : (
                         <>
-                          <HardDrive className="h-4 w-4 text-gold-400" /> Connect Google Drive
+                          <HardDrive className="h-4 w-4 text-brand-400" /> Connect Google Drive
                         </>
                       )}
                     </button>
@@ -679,7 +765,7 @@ export default function CadValidator() {
                           type="button"
                           onClick={openDrivePicker}
                           disabled={status === 'validating' || driveLoading}
-                          className="flex items-center gap-1.5 rounded-lg bg-gold-500 px-3 py-1.5 text-xs font-bold text-slate-950 transition hover:bg-gold-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400 disabled:cursor-wait disabled:opacity-70"
+                          className="flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-bold text-slate-950 transition hover:bg-brand-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 disabled:cursor-wait disabled:opacity-70"
                         >
                           {driveLoading ? (
                             <>
@@ -710,7 +796,7 @@ export default function CadValidator() {
             {status === 'selected' && file && (
               <div className="animate-scale-in rounded-xl border border-slate-700 bg-slate-950/40 p-4 sm:p-5">
                 <div className="flex items-center gap-4">
-                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-gold-500/15 text-gold-400 ring-1 ring-gold-500/30">
+                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-brand-500/15 text-brand-400 ring-1 ring-brand-500/30">
                     <FileArchive className="h-6 w-6" />
                   </span>
                   <div className="min-w-0 flex-1">
@@ -724,7 +810,7 @@ export default function CadValidator() {
                       type="button"
                       onClick={openPicker}
                       title="Replace file"
-                      className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400"
+                      className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
                     >
                       <RefreshCw className="h-3.5 w-3.5" /> Replace
                     </button>
@@ -761,11 +847,11 @@ export default function CadValidator() {
                 type="button"
                 onClick={validate}
                 disabled={!canValidate && status !== 'validating'}
-                className={`mt-5 flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-bold transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${
+                className={`mt-5 flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-bold transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${
                   status === 'validating'
-                    ? 'cursor-wait bg-gold-500/80 text-slate-950'
+                    ? 'cursor-wait bg-brand-500/80 text-slate-950'
                     : canValidate
-                      ? 'bg-gold-500 text-slate-950 shadow-lg shadow-gold-500/25 hover:bg-gold-400 active:scale-[0.99]'
+                      ? 'bg-brand-500 text-slate-950 shadow-lg shadow-brand-500/25 hover:bg-brand-400 active:scale-[0.99]'
                       : 'cursor-not-allowed bg-slate-800 text-slate-500'
                 }`}
               >
@@ -890,17 +976,17 @@ export default function CadValidator() {
                     <button
                       type="button"
                       onClick={openPicker}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gold-500 px-4 py-2.5 text-sm font-bold text-slate-950 transition hover:bg-gold-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400"
+                      className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-bold text-slate-950 transition hover:bg-brand-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
                     >
                       <UploadCloud className="h-4 w-4" /> Re-upload corrected .zip
                     </button>
                     {result.kind !== 'corrupt' && (
                       <button
-                        type="button"
-                        onClick={() => downloadFailureReport(file, result)}
-                        className="flex items-center justify-center gap-2 rounded-lg border border-slate-600 bg-slate-800/60 px-4 py-2.5 text-sm font-semibold text-slate-100 transition hover:border-gold-400/60 hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400"
+                        //type="button"
+                        //onClick={() => downloadFailureReport(file, result)}
+                        //className="flex items-center justify-center gap-2 rounded-lg border border-slate-600 bg-slate-800/60 px-4 py-2.5 text-sm font-semibold text-slate-100 transition hover:border-brand-400/60 hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
                       >
-                        <FileDown className="h-4 w-4" /> Download report (PDF)
+                        {/* <FileDown className="h-4 w-4" /> Download report (PDF) */}
                       </button>
                     )}
                     <button
@@ -950,6 +1036,10 @@ export default function CadValidator() {
             )}
           </section>
 
+          {/* ---------- Cut plan status panel ---------- */}
+          <CutplanPanel cutplans={cutplans} limit={MAX_CUTPLANS} onClear={clearCutplans} />
+          </div>
+
           {/* ---------- Footer ---------- */}
           <footer className="mt-8 flex flex-col items-center gap-2 text-center text-xs text-slate-500">
             <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
@@ -957,12 +1047,75 @@ export default function CadValidator() {
                 <ShieldCheck className="h-3.5 w-3.5 text-slate-600" /> Files processed securely
               </span>
               <span className="hidden text-slate-700 sm:inline">·</span>
-              <span>Supports ASTM / AAMA-DXF, Lectra, Gerber &amp; Optitex exports</span>
+              <span>Supports Lectra, Gerber, Tuka &amp; Optitex exports</span>
             </div>
             <p className="text-slate-600">
               &copy; {new Date().getFullYear()} ShapeShifter. All rights reserved.
             </p>
           </footer>
+
+          {/* ---------- Info / How-it-works modal ---------- */}
+          {infoOpen && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+              onClick={() => setInfoOpen(false)}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="About ThreadValidate CAD"
+                className="animate-scale-in w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Info className="h-5 w-5 text-brand-400" />
+                    <h3 className="text-base font-bold text-white">About ThreadValidate CAD</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setInfoOpen(false)}
+                    aria-label="Close"
+                    className="grid h-8 w-8 place-items-center rounded-md text-slate-400 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <p className="text-sm leading-relaxed text-slate-300">
+                  ThreadValidate CAD checks your apparel CAD packages for completeness and
+                  integrity <span className="font-semibold text-slate-100">before they reach the
+                  cutting floor</span>, so only production-ready cut plans move forward.
+                </p>
+
+                <p className="mt-4 text-[11px] font-semibold uppercase tracking-wider text-brand-300/80">
+                  How to use it
+                </p>
+                <ol className="mt-2 space-y-2.5">
+                  {[
+                    'Export your CAD package as a single .zip — one .xlsx cut plan plus your CAD files.',
+                    'Drag & drop the .zip onto the upload area, browse for it, or pick it from Google Drive.',
+                    'Click Validate. Fix any flagged issues and re-upload until the package passes — the header bar tallies plans that are ready to submit.',
+                  ].map((step, i) => (
+                    <li key={i} className="flex items-start gap-3 text-sm text-slate-300">
+                      <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand-500/15 text-[11px] font-bold text-brand-300 ring-1 ring-brand-500/30">
+                        {i + 1}
+                      </span>
+                      <span className="leading-relaxed">{step}</span>
+                    </li>
+                  ))}
+                </ol>
+
+                <button
+                  type="button"
+                  onClick={() => setInfoOpen(false)}
+                  className="mt-5 w-full rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                >
+                  Got it
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* ---------- Simulated Google Drive file browser ---------- */}
           {drivePickerOpen && (
@@ -976,13 +1129,13 @@ export default function CadValidator() {
               >
                 <div className="mb-1 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <HardDrive className="h-5 w-5 text-gold-400" />
+                    <HardDrive className="h-5 w-5 text-brand-400" />
                     <h3 className="text-base font-bold text-white">Your Google Drive</h3>
                   </div>
                   <button
                     type="button"
                     onClick={() => setDrivePickerOpen(false)}
-                    className="grid h-8 w-8 place-items-center rounded-md text-slate-400 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400"
+                    className="grid h-8 w-8 place-items-center rounded-md text-slate-400 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -996,9 +1149,9 @@ export default function CadValidator() {
                       <button
                         type="button"
                         onClick={() => pickFromDrive(entry)}
-                        className="flex w-full items-center gap-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-left transition hover:border-gold-400/60 hover:bg-slate-800/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-400"
+                        className="flex w-full items-center gap-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-left transition hover:border-brand-400/60 hover:bg-slate-800/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
                       >
-                        <FileArchive className="h-5 w-5 shrink-0 text-gold-400" />
+                        <FileArchive className="h-5 w-5 shrink-0 text-brand-400" />
                         <span className="min-w-0">
                           <span className="block truncate font-mono text-sm text-slate-100">
                             {entry.name}
@@ -1018,6 +1171,78 @@ export default function CadValidator() {
         </main>
       </div>
     </div>
+  )
+}
+
+// Right-hand status panel: one row per validated cut plan with a green tick
+// (passed) or a red cross (failed). Hovering the red cross reveals why it failed.
+function CutplanPanel({ cutplans, limit, onClear }) {
+  const used = cutplans.length
+  return (
+    <aside className="w-full shrink-0 rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5 shadow-2xl shadow-black/40 backdrop-blur-sm lg:w-96">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="flex items-center gap-2 text-base font-bold text-white">
+          <ListChecks className="h-5 w-5 text-brand-400" />
+          Cut Plan Status
+        </h2>
+        <span className="rounded-full border border-slate-700 bg-slate-950/60 px-2.5 py-0.5 text-xs font-semibold text-slate-400">
+          {used}/{limit}
+        </span>
+      </div>
+
+      {used === 0 ? (
+        <p className="rounded-lg border border-dashed border-slate-700 bg-slate-950/30 p-4 text-center text-sm leading-relaxed text-slate-500">
+          No cut plans validated yet. Upload a .zip and click Validate to see its status here.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {cutplans.map((c, i) => (
+            <li
+              key={i}
+              className="flex items-center gap-2.5 rounded-lg border border-slate-800 bg-slate-950/40 p-3"
+            >
+              {c.status === 'pass' ? (
+                <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+              ) : (
+                <span className="group relative flex shrink-0 cursor-help">
+                  <XCircle className="h-5 w-5 text-red-400" />
+                  {/* Failure reason — revealed on hover / focus of the red cross. */}
+                  <span
+                    role="tooltip"
+                    className="pointer-events-none absolute left-0 top-7 z-20 hidden w-64 rounded-lg border border-red-500/40 bg-slate-950 p-3 text-xs leading-relaxed text-red-100 shadow-xl group-hover:block"
+                  >
+                    {c.reason || 'Validation failed.'}
+                  </span>
+                </span>
+              )}
+              <span
+                className="min-w-0 flex-1 truncate font-mono text-sm text-slate-200"
+                title={c.name}
+              >
+                {c.name}
+              </span>
+              <span
+                className={`shrink-0 text-xs font-bold uppercase tracking-wide ${
+                  c.status === 'pass' ? 'text-emerald-400' : 'text-red-400'
+                }`}
+              >
+                {c.status === 'pass' ? 'Pass' : 'Fail'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {used > 0 && (
+        <button
+          type="button"
+          onClick={onClear}
+          className="mt-4 w-full rounded-lg border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-400 transition hover:border-red-400/50 hover:text-red-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+        >
+          Clear list
+        </button>
+      )}
+    </aside>
   )
 }
 
