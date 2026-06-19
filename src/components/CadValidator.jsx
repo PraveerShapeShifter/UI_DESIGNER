@@ -8,6 +8,7 @@ import {
   getConnection,
   connectDrive,
   disconnectDrive,
+  uploadFilesToDrive,
 } from '../lib/googleDrivePicker'
 import {
   Scissors,
@@ -18,11 +19,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   ShieldCheck,
-  RefreshCw,
-  FileSpreadsheet,
-  Files,
-  FileWarning,
-  FileDown,
+  Clock,
   HardDrive,
   Info,
   ListChecks,
@@ -167,6 +164,7 @@ function formatBytes(bytes) {
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[i]}`
 }
 
+
 const isZip = (file) =>
   !!file &&
   (file.type === 'application/zip' ||
@@ -186,11 +184,27 @@ async function inspectArchive(file) {
     .map((f) => f.name.split('/').pop())
     .filter(Boolean)
 
+  const tmpNames = baseNames.filter((n) => /\.tmp$/i.test(n))
+  const plxNames = baseNames.filter((n) => /\.plx$/i.test(n))
+  const pdsNames = baseNames.filter((n) => /\.pds$/i.test(n))
+  const tumNames = baseNames.filter((n) => /\.tum$/i.test(n))
+
+  // Identify CAD system from whichever proprietary extension is present.
+  let cadType = null
+  let cadNames = []
+  if      (tmpNames.length) { cadType = 'Gerber'; cadNames = tmpNames }
+  else if (plxNames.length) { cadType = 'Lectra'; cadNames = plxNames }
+  else if (pdsNames.length) { cadType = 'PDS';    cadNames = pdsNames }
+  else if (tumNames.length) { cadType = 'Tuka';   cadNames = tumNames }
+
+  const knownExts = /\.(xlsx|tmp|plx|pds|tum)$/i
   return {
     corrupt: false,
     xlsxNames: baseNames.filter((n) => /\.xlsx$/i.test(n)),
-    tmpNames: baseNames.filter((n) => /\.tmp$/i.test(n)),
-    otherNames: baseNames.filter((n) => !/\.(xlsx|tmp)$/i.test(n)),
+    cadNames,
+    cadType,
+    tmpNames, // kept so simulateTmpFailures still works for Gerber packages
+    otherNames: baseNames.filter((n) => !knownExts.test(n)),
   }
 }
 
@@ -391,36 +405,42 @@ const DRIVE_FILES = GARMENT_STYLES.map((style) => ({
 }))
 
 export default function CadValidator() {
-  const [file, setFile] = useState(null)
-  // status: 'idle' | 'selected' | 'validating' | 'error' | 'success'
-  const [status, setStatus] = useState('idle')
-  const [result, setResult] = useState(null)
   const [isDragging, setIsDragging] = useState(false)
   const [hint, setHint] = useState('')
   const [outcome, setOutcome] = useState('fail') // demo toggle: 'fail' | 'pass'
-  // Persistent log of validated cut plans (name + pass/fail verdict + reason).
+  // Persistent log (name + pass/fail) for cross-session badge + localStorage.
   const [cutplans, setCutplans] = useState(readCutplans)
-  const passedCount = cutplans.filter((c) => c.status === 'pass').length
+  // Unified session queue — each entry holds the File object (in-memory) + live status.
+  const [queue, setQueue] = useState(() =>
+    readCutplans().map((c, i) => ({
+      id: i,
+      file: null,
+      name: c.name,
+      size: null,
+      status: c.status,
+      reason: c.reason,
+    }))
+  )
+  const idCounter = useRef(queue.length)
+  const [isValidating, setIsValidating] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [driveLoading, setDriveLoading] = useState(false)
   const [drivePickerOpen, setDrivePickerOpen] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
   const driveConfigured = isDriveConfigured()
-  // Seed from localStorage so a returning user shows as already connected.
   const [drive, setDrive] = useState(() =>
     driveConfigured ? getConnection() : { connected: false, email: null },
   )
 
   const inputRef = useRef(null)
 
-  const reset = useCallback(() => {
-    setFile(null)
-    setStatus('idle')
-    setResult(null)
-    setHint('')
-    if (inputRef.current) inputRef.current.value = ''
-  }, [])
+  // Derived values
+  const passedCount  = queue.filter((q) => q.status === 'pass').length
+  const pendingCount = queue.filter((q) => q.status === 'pending' && q.file).length
+  const canValidate  = pendingCount > 0 && !isValidating
+  const showZone     = queue.length < MAX_CUTPLANS && !isValidating
 
-  // Append a validated cut plan to the log and persist it.
+  // Persist a completed entry to localStorage (for cross-session badge).
   const recordCutplan = useCallback((entry) => {
     setCutplans((prev) => {
       const next = [...prev, entry].slice(0, MAX_CUTPLANS)
@@ -429,32 +449,75 @@ export default function CadValidator() {
     })
   }, [])
 
-  // Clear the cut-plan log so the user can start a fresh batch of 5.
-  const clearCutplans = useCallback(() => {
+  // Clear everything — queue + localStorage.
+  const clearAll = useCallback(() => {
+    setQueue([])
     setCutplans([])
     saveCutplans([])
+    setHint('')
   }, [])
 
-  const acceptFile = useCallback((incoming) => {
-    if (!incoming) return
-    if (cutplans.length >= MAX_CUTPLANS) {
-      setHint(`You can upload a maximum of ${MAX_CUTPLANS} cut plans. Clear the list to start a new batch.`)
-      return
+  // Remove a single queue entry by id; also removes from localStorage if completed.
+  const removeFromQueue = useCallback((id) => {
+    setQueue((prev) => {
+      const removed = prev.find((q) => q.id === id)
+      const next = prev.filter((q) => q.id !== id)
+      if (removed && (removed.status === 'pass' || removed.status === 'fail')) {
+        setCutplans((cp) => {
+          const updated = cp.filter((c) => c.name !== removed.name)
+          saveCutplans(updated)
+          return updated
+        })
+      }
+      return next
+    })
+  }, [])
+
+  const submitToDrive = useCallback(async () => {
+    if (isSubmitting || queue.length === 0) return
+    const files = queue.map((q) => q.file).filter(Boolean)
+    if (files.length === 0) return
+    setIsSubmitting(true)
+    try {
+      await uploadFilesToDrive(files)
+    } finally {
+      setIsSubmitting(false)
     }
-    if (!isZip(incoming)) {
+  }, [isSubmitting, queue])
+
+  // Accept one or more File objects; filters to zips, respects quota.
+  const acceptFiles = useCallback((fileList) => {
+    const incoming = Array.from(fileList || []).filter(isZip)
+    if (incoming.length === 0) {
       setHint('Only .zip archives are supported. Please export your CAD package as a .zip.')
       return
     }
-    setHint('')
-    setResult(null)
-    setFile(incoming)
-    setStatus('selected')
-  }, [cutplans.length])
+    const slots = MAX_CUTPLANS - queue.length
+    if (slots <= 0) {
+      setHint(`You can upload a maximum of ${MAX_CUTPLANS} cut plans. Remove files to make room.`)
+      return
+    }
+    const toAdd = incoming.slice(0, slots)
+    if (incoming.length > slots)
+      setHint(`Only ${slots} slot(s) remaining — ${incoming.length - slots} file(s) were ignored.`)
+    else
+      setHint('')
+    setQueue((prev) => [
+      ...prev,
+      ...toAdd.map((f) => ({
+        id: ++idCounter.current,
+        file: f,
+        name: f.name,
+        size: f.size,
+        status: 'pending',
+      })),
+    ])
+  }, [queue.length])
 
   // ----- Drag & drop -----
   const onDragOver = (e) => {
     e.preventDefault()
-    if (status === 'validating') return
+    if (isValidating) return
     setIsDragging(true)
   }
   const onDragLeave = (e) => {
@@ -464,13 +527,11 @@ export default function CadValidator() {
   const onDrop = (e) => {
     e.preventDefault()
     setIsDragging(false)
-    if (status === 'validating') return
-    acceptFile(e.dataTransfer.files?.[0])
+    if (!isValidating) acceptFiles(e.dataTransfer.files)
   }
-  const onBrowse = (e) => acceptFile(e.target.files?.[0])
+  const onBrowse  = (e) => acceptFiles(e.target.files)
   const openPicker = () => {
-    if (status === 'validating') return
-    inputRef.current?.click()
+    if (!isValidating) inputRef.current?.click()
   }
 
   // Connect: opens Google's own login/consent popup, then remembers the session.
@@ -495,88 +556,67 @@ export default function CadValidator() {
 
   // Open the simulated Drive file browser.
   const openDrivePicker = () => {
-    if (status === 'validating' || driveLoading) return
+    if (isValidating || driveLoading) return
     setHint('')
     setDrivePickerOpen(true)
   }
 
-  // Pick a file from the simulated Drive: build that package in-memory, then validate.
+  // Pick a file from the simulated Drive: build that package in-memory, then add to queue.
   const pickFromDrive = async (entry) => {
     setDrivePickerOpen(false)
     setDriveLoading(true)
     try {
-      acceptFile(await buildPackageZip(entry.style, 'valid'))
+      acceptFiles([await buildPackageZip(entry.style, 'valid')])
     } finally {
       setDriveLoading(false)
     }
   }
 
-  // ----- Validation -----
+  // ----- Sequential validation -----
   const validate = async () => {
-    if (!file || status === 'validating') return
-    setStatus('validating')
-    const [info] = await Promise.all([inspectArchive(file), delay(randInt(900, 1700))])
+    if (!canValidate) return
+    const pendingItems = queue.filter((q) => q.status === 'pending' && q.file)
+    setIsValidating(true)
 
-    if (info.corrupt) {
-      setResult({ kind: 'corrupt' })
-      setStatus('error')
-      recordCutplan({
-        name: file.name,
-        status: 'fail',
-        reason: 'Archive could not be read — it may be corrupt or not a valid .zip file.',
-      })
-      return
+    for (const item of pendingItems) {
+      setQueue((prev) => prev.map((q) => q.id === item.id ? { ...q, status: 'validating' } : q))
+
+      const [info] = await Promise.all([inspectArchive(item.file), delay(randInt(900, 1700))])
+
+      if (info.corrupt) {
+        const reason = 'Archive could not be read — it may be corrupt or not a valid .zip file.'
+        setQueue((prev) => prev.map((q) => q.id === item.id ? { ...q, status: 'fail', reason, cadType: null } : q))
+        recordCutplan({ name: item.name, status: 'fail', reason })
+        continue
+      }
+
+      const cadType = info.cadType
+      const structural = []
+      if (info.xlsxNames.length === 0) structural.push('Missing spreadsheet (.xlsx)')
+      if (info.cadNames.length === 0)  structural.push('Missing CAD files (.tmp / .plx / .pds / .tum)')
+      if (structural.length) {
+        const reason = structural.join('; ')
+        setQueue((prev) => prev.map((q) => q.id === item.id ? { ...q, status: 'fail', reason, cadType } : q))
+        recordCutplan({ name: item.name, status: 'fail', reason })
+        continue
+      }
+
+      // Per-file failure simulation only applies to Gerber (.tmp) packages for now.
+      const failedTmps = cadType === 'Gerber' ? simulateTmpFailures(info.cadNames, outcome) : []
+      if (failedTmps.length) {
+        const reason =
+          `${failedTmps.length} of ${info.cadNames.length} ${cadType} file(s) failed — ` +
+          failedTmps.map((f) => `${f.name}: ${f.reason}`).join('; ')
+        setQueue((prev) => prev.map((q) => q.id === item.id ? { ...q, status: 'fail', reason, cadType } : q))
+        recordCutplan({ name: item.name, status: 'fail', reason })
+      } else {
+        setQueue((prev) => prev.map((q) => q.id === item.id ? { ...q, status: 'pass', cadType } : q))
+        recordCutplan({ name: item.name, status: 'pass' })
+      }
     }
 
-    // Real structural checks.
-    const structural = []
-    if (info.xlsxNames.length === 0)
-      structural.push({
-        icon: FileSpreadsheet,
-        title: 'Missing spreadsheet (.xlsx)',
-        detail: 'The archive must contain one .xlsx specification file — none was found.',
-      })
-    if (info.tmpNames.length === 0)
-      structural.push({
-        icon: Files,
-        title: 'Missing Gerber CAD files (.tmp)',
-        detail: 'The archive must contain at least one .tmp Gerber file — none was found.',
-      })
-
-    if (structural.length) {
-      setResult({ kind: 'structure', structural, info })
-      setStatus('error')
-      recordCutplan({
-        name: file.name,
-        status: 'fail',
-        reason: structural.map((s) => s.title).join('; '),
-      })
-      return
-    }
-
-    // Simulated per-file Gerber validation (real names, placeholder verdicts).
-    const failedTmps = simulateTmpFailures(info.tmpNames, outcome)
-    if (failedTmps.length) {
-      setResult({ kind: 'tmp', failedTmps, info })
-      setStatus('error')
-      recordCutplan({
-        name: file.name,
-        status: 'fail',
-        reason:
-          `${failedTmps.length} of ${info.tmpNames.length} Gerber (.tmp) file(s) failed — ` +
-          failedTmps.map((f) => `${f.name}: ${f.reason}`).join('; '),
-      })
-    } else {
-      setResult({ kind: 'success', info })
-      setStatus('success')
-      // A cut plan only counts as passed once it has truly cleared validation.
-      recordCutplan({ name: file.name, status: 'pass' })
-    }
+    setIsValidating(false)
   }
-
-  const canValidate = status === 'selected'
-  const showZone = status === 'idle' || status === 'validating'
-  const info = result?.info
 
   return (
     <div className="pattern-bg min-h-screen w-full">
@@ -596,18 +636,25 @@ export default function CadValidator() {
                 <Scissors className="h-5 w-5" strokeWidth={2.4} />
               </span>
               <div className="text-left">
-                <h1 className="text-xl font-extrabold tracking-tight text-white sm:text-2xl">
+                <h1 className="flex items-center gap-1.5 text-xl font-extrabold tracking-tight text-white sm:text-2xl">
                   ThreadValidate <span className="text-brand-400">CAD</span>
+                  <button
+                    type="button"
+                    onClick={() => setInfoOpen(true)}
+                    aria-label="About this portal and how to use it"
+                    title="What is this? How do I use it?"
+                    className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-slate-600 bg-slate-800/80 text-slate-400 transition hover:border-brand-400/60 hover:text-brand-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                  >
+                    <Info className="h-3 w-3" />
+                  </button>
                 </h1>
                 <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-400">
                   Pattern &amp; Marker Integrity Suite
                 </p>
               </div>
             </div>
-            {/* Right: status bar + info */}
-            <div className="flex flex-1 items-center justify-end gap-2">
-              {/* Persistent readiness status bar — counts cut plans that have
-                  PASSED validation, so it reflects genuine readiness to submit. */}
+            {/* Right: status bar */}
+            <div className="flex flex-1 items-center justify-end">
               <span
                 aria-live="polite"
                 title="Cut plans that have passed validation and are ready to submit"
@@ -629,16 +676,6 @@ export default function CadValidator() {
                   'No cut plans validated yet'
                 )}
               </span>
-              {/* Single, unobtrusive help affordance — purpose + how-to on demand. */}
-              <button
-                type="button"
-                onClick={() => setInfoOpen(true)}
-                aria-label="About this portal and how to use it"
-                title="What is this? How do I use it?"
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-slate-700 bg-slate-900/60 text-slate-400 transition hover:border-brand-400/60 hover:text-brand-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
-              >
-                <Info className="h-4 w-4" />
-              </button>
             </div>
           </div>
 
@@ -701,8 +738,7 @@ export default function CadValidator() {
                 onDragOver={onDragOver}
                 onDragLeave={onDragLeave}
                 onDrop={onDrop}
-                disabled={status === 'validating'}
-                className={`group relative flex min-h-[380px] w-full flex-col items-center justify-center gap-5 rounded-xl border-2 border-dashed px-6 py-20 text-center transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 sm:py-28 ${
+                className={`group relative flex w-full flex-col items-center justify-center gap-5 rounded-xl border-2 border-dashed px-6 py-16 text-center transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 sm:py-20 ${
                   isDragging
                     ? 'brand-glow scale-[1.01] border-brand-400 bg-brand-500/10'
                     : 'border-slate-600 bg-slate-950/30 hover:border-brand-400/70 hover:bg-slate-950/50'
@@ -717,18 +753,18 @@ export default function CadValidator() {
                 </span>
                 <span className="space-y-1.5">
                   <span className="block text-xl font-semibold text-white">
-                    {isDragging ? 'Release to upload' : 'Drag & drop your .zip here'}
+                    {isDragging ? 'Release to upload' : 'Drag & drop your .zip files here'}
                   </span>
                   <span className="block text-base text-slate-400">
                     or{' '}
                     <span className="font-medium text-brand-300 underline-offset-2 group-hover:underline">
                       click to browse
                     </span>{' '}
-                    your files
+                    and select up to {MAX_CUTPLANS} files
                   </span>
                 </span>
                 <span className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/70 px-3.5 py-1.5 text-xs font-medium text-slate-400">
-                  <FileArchive className="h-4 w-4" /> Expects 1 × .xlsx and one or more CAD files in the zip
+                  <FileArchive className="h-4 w-4" /> Each zip: 1 × .xlsx + one or more .tmp CAD files
                 </span>
               </button>
 
@@ -764,7 +800,7 @@ export default function CadValidator() {
                         <button
                           type="button"
                           onClick={openDrivePicker}
-                          disabled={status === 'validating' || driveLoading}
+                          disabled={driveLoading}
                           className="flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-bold text-slate-950 transition hover:bg-brand-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 disabled:cursor-wait disabled:opacity-70"
                         >
                           {driveLoading ? (
@@ -792,252 +828,63 @@ export default function CadValidator() {
               </>
             )}
 
-            {/* Selected file card */}
-            {status === 'selected' && file && (
-              <div className="animate-scale-in rounded-xl border border-slate-700 bg-slate-950/40 p-4 sm:p-5">
-                <div className="flex items-center gap-4">
-                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-brand-500/15 text-brand-400 ring-1 ring-brand-500/30">
-                    <FileArchive className="h-6 w-6" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold text-white" title={file.name}>
-                      {file.name}
-                    </p>
-                    <p className="text-xs text-slate-400">{formatBytes(file.size)} · ready to validate</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={openPicker}
-                      title="Replace file"
-                      className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" /> Replace
-                    </button>
-                    <button
-                      type="button"
-                      onClick={reset}
-                      title="Remove file"
-                      className="grid h-8 w-8 place-items-center rounded-md text-slate-400 transition hover:bg-red-500/15 hover:text-red-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
             <input
               ref={inputRef}
               type="file"
+              multiple
               accept=".zip,application/zip,application/x-zip-compressed"
               onChange={onBrowse}
               className="hidden"
             />
 
             {hint && (
-              <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-red-400">
+              <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-amber-400">
                 <AlertTriangle className="h-3.5 w-3.5" /> {hint}
               </p>
             )}
 
             {/* ---------- Validate button ---------- */}
-            {status !== 'success' && (
+            {(queue.some((q) => q.status === 'pending') || isValidating) && (
               <button
                 type="button"
                 onClick={validate}
-                disabled={!canValidate && status !== 'validating'}
+                disabled={!canValidate}
                 className={`mt-5 flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-bold transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${
-                  status === 'validating'
+                  isValidating
                     ? 'cursor-wait bg-brand-500/80 text-slate-950'
                     : canValidate
                       ? 'bg-brand-500 text-slate-950 shadow-lg shadow-brand-500/25 hover:bg-brand-400 active:scale-[0.99]'
                       : 'cursor-not-allowed bg-slate-800 text-slate-500'
                 }`}
               >
-                {status === 'validating' ? (
+                {isValidating ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Inspecting archive…
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {(() => {
+                      const cur = queue.find((q) => q.status === 'validating')
+                      return cur ? `Validating ${cur.name.replace(/\.zip$/i, '')}…` : 'Validating…'
+                    })()}
                   </>
                 ) : (
                   <>
-                    <ShieldCheck className="h-4 w-4" /> Validate Files
+                    <ShieldCheck className="h-4 w-4" /> Validate Files ({pendingCount})
                   </>
                 )}
               </button>
             )}
-
-            {/* ---------- Result: ERROR ---------- */}
-            {status === 'error' && result && (
-              <div
-                role="alert"
-                aria-live="assertive"
-                className="animate-fade-in-up mt-5 overflow-hidden rounded-xl border border-red-500/40 bg-red-500/10"
-              >
-                <div className="flex items-start gap-3 border-b border-red-500/20 p-4">
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-red-500/20 text-red-400">
-                    <AlertTriangle className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <p className="font-bold text-red-300">Validation Failed</p>
-                    <p className="mt-0.5 text-sm leading-relaxed text-red-100/80">
-                      Please correct the internal CAD file structure inside the zip archive and re-upload.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-4">
-                  {/* Archive contents summary (real, when we could read it) */}
-                  {info && (
-                    <div className="mb-4 flex flex-wrap gap-2 text-[11px]">
-                      <Chip
-                        ok={info.xlsxNames.length > 0}
-                        label={`${info.xlsxNames.length} spreadsheet (.xlsx)`}
-                      />
-                      <Chip
-                        ok={info.tmpNames.length > 0}
-                        label={`${info.tmpNames.length} Gerber (.tmp)`}
-                      />
-                      {info.otherNames.length > 0 && (
-                        <span className="rounded-full border border-slate-600 bg-slate-800/60 px-2.5 py-1 text-slate-400">
-                          {info.otherNames.length} other file(s)
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Corrupt archive */}
-                  {result.kind === 'corrupt' && (
-                    <p className="rounded-lg border border-red-500/15 bg-slate-950/40 p-3 text-sm text-slate-200">
-                      The archive could not be read — it may be corrupt or not a valid .zip file.
-                    </p>
-                  )}
-
-                  {/* Structural issues */}
-                  {result.kind === 'structure' && (
-                    <>
-                      <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-red-300/70">
-                        {result.structural.length} structural issue
-                        {result.structural.length > 1 ? 's' : ''} detected
-                      </p>
-                      <ul className="space-y-2">
-                        {result.structural.map((err, i) => {
-                          const Icon = err.icon
-                          return (
-                            <li
-                              key={i}
-                              className="flex items-start gap-3 rounded-lg border border-red-500/15 bg-slate-950/40 p-3"
-                            >
-                              <Icon className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-                              <div>
-                                <p className="text-sm font-semibold text-slate-100">{err.title}</p>
-                                <p className="text-xs text-slate-400">{err.detail}</p>
-                              </div>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    </>
-                  )}
-
-                  {/* Failed .tmp files list */}
-                  {result.kind === 'tmp' && (
-                    <>
-                      <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-red-300/70">
-                        {result.failedTmps.length} of {info.tmpNames.length} Gerber (.tmp) files failed validation
-                      </p>
-                      <ul className="space-y-2">
-                        {result.failedTmps.map((f) => (
-                          <li
-                            key={f.name}
-                            className="flex items-start gap-3 rounded-lg border border-red-500/15 bg-slate-950/40 p-3"
-                          >
-                            <FileWarning className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-                            <div className="min-w-0">
-                              <p className="truncate font-mono text-sm font-semibold text-slate-100" title={f.name}>
-                                {f.name}
-                              </p>
-                              <p className="text-xs text-slate-400">{f.reason}</p>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                      {info.tmpNames.length - result.failedTmps.length > 0 && (
-                        <p className="mt-3 flex items-center gap-1.5 text-xs text-emerald-400/80">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          {info.tmpNames.length - result.failedTmps.length} Gerber file
-                          {info.tmpNames.length - result.failedTmps.length > 1 ? 's' : ''} passed
-                        </p>
-                      )}
-                    </>
-                  )}
-
-                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                    <button
-                      type="button"
-                      onClick={openPicker}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-bold text-slate-950 transition hover:bg-brand-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
-                    >
-                      <UploadCloud className="h-4 w-4" /> Re-upload corrected .zip
-                    </button>
-                    {result.kind !== 'corrupt' && (
-                      <button
-                        //type="button"
-                        //onClick={() => downloadFailureReport(file, result)}
-                        //className="flex items-center justify-center gap-2 rounded-lg border border-slate-600 bg-slate-800/60 px-4 py-2.5 text-sm font-semibold text-slate-100 transition hover:border-brand-400/60 hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
-                      >
-                        {/* <FileDown className="h-4 w-4" /> Download report (PDF) */}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={reset}
-                      className="rounded-lg border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-800 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
-                    >
-                      Start over
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ---------- Result: SUCCESS ---------- */}
-            {status === 'success' && info && (
-              <div
-                role="status"
-                aria-live="polite"
-                className="animate-fade-in-up mt-5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-5"
-              >
-                <div className="flex items-start gap-3">
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-emerald-500/20 text-emerald-400">
-                    <CheckCircle2 className="h-5 w-5" />
-                  </span>
-                  <div className="flex-1">
-                    <p className="font-bold text-emerald-300">Validation Passed</p>
-                    <p className="mt-0.5 text-sm leading-relaxed text-emerald-100/80">
-                      {info.xlsxNames.length} spreadsheet and {info.tmpNames.length} Gerber file
-                      {info.tmpNames.length > 1 ? 's' : ''} verified — this package is cleared for the
-                      cutting floor.
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
-                      <Chip ok label={`${info.xlsxNames.length} spreadsheet (.xlsx)`} />
-                      <Chip ok label={`${info.tmpNames.length} Gerber (.tmp)`} />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={reset}
-                      className="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-bold text-slate-950 transition hover:bg-emerald-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-                    >
-                      <UploadCloud className="h-4 w-4" /> Validate another package
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </section>
 
           {/* ---------- Cut plan status panel ---------- */}
-          <CutplanPanel cutplans={cutplans} limit={MAX_CUTPLANS} onClear={clearCutplans} />
+          <CutplanPanel
+            queue={queue}
+            limit={MAX_CUTPLANS}
+            onClear={clearAll}
+            onDelete={removeFromQueue}
+            onSubmit={submitToDrive}
+            driveConnected={drive.connected}
+            isSubmitting={isSubmitting}
+            isValidating={isValidating}
+          />
           </div>
 
           {/* ---------- Footer ---------- */}
@@ -1174,10 +1021,36 @@ export default function CadValidator() {
   )
 }
 
-// Right-hand status panel: one row per validated cut plan with a green tick
-// (passed) or a red cross (failed). Hovering the red cross reveals why it failed.
-function CutplanPanel({ cutplans, limit, onClear }) {
-  const used = cutplans.length
+// Right-hand status panel: one row per queue entry with live status indicators.
+function CutplanPanel({ queue, limit, onClear, onDelete, onSubmit, driveConnected, isSubmitting, isValidating }) {
+  const used = queue.length
+  const submittableCount = queue.filter((q) => q.file).length
+
+  const statusIcon = (q) => {
+    if (q.status === 'pending')    return <Clock className="h-5 w-5 shrink-0 text-slate-500" />
+    if (q.status === 'validating') return <Loader2 className="h-5 w-5 shrink-0 animate-spin text-brand-400" />
+    if (q.status === 'pass')       return <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+    return (
+      <span className="group relative flex shrink-0 cursor-help">
+        <XCircle className="h-5 w-5 text-red-400" />
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute left-0 top-7 z-20 hidden w-64 rounded-lg border border-red-500/40 bg-slate-950 p-3 text-xs leading-relaxed text-red-100 shadow-xl group-hover:block"
+        >
+          {q.reason || 'Validation failed.'}
+        </span>
+      </span>
+    )
+  }
+
+  const statusLabel = { pending: 'Pending', validating: 'Validating…', pass: 'Pass', fail: 'Fail' }
+  const statusColor = {
+    pending:    'text-slate-500',
+    validating: 'text-brand-400',
+    pass:       'text-emerald-400',
+    fail:       'text-red-400',
+  }
+
   return (
     <aside className="w-full shrink-0 rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5 shadow-2xl shadow-black/40 backdrop-blur-sm lg:w-96">
       <div className="mb-4 flex items-center justify-between">
@@ -1192,55 +1065,73 @@ function CutplanPanel({ cutplans, limit, onClear }) {
 
       {used === 0 ? (
         <p className="rounded-lg border border-dashed border-slate-700 bg-slate-950/30 p-4 text-center text-sm leading-relaxed text-slate-500">
-          No cut plans validated yet. Upload a .zip and click Validate to see its status here.
+          No files added yet. Drag &amp; drop zip packages above to begin.
         </p>
       ) : (
         <ul className="space-y-2">
-          {cutplans.map((c, i) => (
+          {queue.map((q) => (
             <li
-              key={i}
-              className="flex items-center gap-2.5 rounded-lg border border-slate-800 bg-slate-950/40 p-3"
+              key={q.id}
+              className="flex items-start gap-2.5 rounded-lg border border-slate-800 bg-slate-950/40 p-3"
             >
-              {c.status === 'pass' ? (
-                <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
-              ) : (
-                <span className="group relative flex shrink-0 cursor-help">
-                  <XCircle className="h-5 w-5 text-red-400" />
-                  {/* Failure reason — revealed on hover / focus of the red cross. */}
-                  <span
-                    role="tooltip"
-                    className="pointer-events-none absolute left-0 top-7 z-20 hidden w-64 rounded-lg border border-red-500/40 bg-slate-950 p-3 text-xs leading-relaxed text-red-100 shadow-xl group-hover:block"
-                  >
-                    {c.reason || 'Validation failed.'}
-                  </span>
+              <span className="mt-0.5 shrink-0">{statusIcon(q)}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block break-all font-mono text-sm text-slate-200">{q.name}</span>
+                <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
+                  {q.size != null && <span>{formatBytes(q.size)}</span>}
+                  {q.size != null && <span className="text-slate-700">·</span>}
+                  <span className="font-medium text-slate-400">{q.cadType ?? '—'}</span>
                 </span>
-              )}
-              <span
-                className="min-w-0 flex-1 truncate font-mono text-sm text-slate-200"
-                title={c.name}
-              >
-                {c.name}
               </span>
-              <span
-                className={`shrink-0 text-xs font-bold uppercase tracking-wide ${
-                  c.status === 'pass' ? 'text-emerald-400' : 'text-red-400'
-                }`}
-              >
-                {c.status === 'pass' ? 'Pass' : 'Fail'}
+              <span className={`mt-0.5 shrink-0 text-xs font-bold uppercase tracking-wide ${statusColor[q.status]}`}>
+                {statusLabel[q.status]}
               </span>
+              <button
+                type="button"
+                onClick={() => onDelete(q.id)}
+                disabled={isValidating}
+                aria-label={`Remove ${q.name}`}
+                title="Remove"
+                className="ml-1 mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md text-slate-500 transition hover:bg-red-500/15 hover:text-red-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </li>
           ))}
         </ul>
       )}
 
       {used > 0 && (
-        <button
-          type="button"
-          onClick={onClear}
-          className="mt-4 w-full rounded-lg border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-400 transition hover:border-red-400/50 hover:text-red-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
-        >
-          Clear list
-        </button>
+        <div className="mt-4 flex flex-col gap-2">
+          {driveConnected && (
+            <button
+              type="button"
+              onClick={onSubmit}
+              disabled={isSubmitting || isValidating || submittableCount === 0 || queue.some((q) => q.status === 'pending')}
+              title={
+                queue.some((q) => q.status === 'pending')
+                  ? 'Validate all files before submitting'
+                  : submittableCount === 0
+                    ? 'Re-validate packages to enable upload'
+                    : undefined
+              }
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-500 px-3 py-2 text-sm font-bold text-slate-950 transition hover:bg-brand-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isSubmitting ? (
+                <><Loader2 className="h-4 w-4 animate-spin" /> Uploading to Drive…</>
+              ) : (
+                <><HardDrive className="h-4 w-4" /> Submit to Drive ({submittableCount})</>
+              )}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClear}
+            className="w-full rounded-lg border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-400 transition hover:border-red-400/50 hover:text-red-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+          >
+            Clear list
+          </button>
+        </div>
       )}
     </aside>
   )

@@ -39,3 +39,9 @@ export async function connectDrive() {
 export function disconnectDrive() {
   localStorage.removeItem(STORAGE_KEY)
 }
+
+// Simulate uploading an array of File objects to Drive.
+export async function uploadFilesToDrive(files) {
+  await new Promise((resolve) => setTimeout(resolve, 800 + files.length * 300))
+  return { uploaded: files.length }
+}
