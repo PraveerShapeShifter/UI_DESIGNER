@@ -188,16 +188,18 @@ async function inspectArchive(file) {
   const plxNames = baseNames.filter((n) => /\.plx$/i.test(n))
   const pdsNames = baseNames.filter((n) => /\.pds$/i.test(n))
   const tumNames = baseNames.filter((n) => /\.tum$/i.test(n))
+  const optNames = baseNames.filter((n) => /\.opt$/i.test(n))
 
   // Identify CAD system from whichever proprietary extension is present.
   let cadType = null
   let cadNames = []
-  if      (tmpNames.length) { cadType = 'Gerber'; cadNames = tmpNames }
-  else if (plxNames.length) { cadType = 'Lectra'; cadNames = plxNames }
-  else if (pdsNames.length) { cadType = 'PDS';    cadNames = pdsNames }
-  else if (tumNames.length) { cadType = 'Tuka';   cadNames = tumNames }
+  if      (tmpNames.length) { cadType = 'Gerber';  cadNames = tmpNames }
+  else if (plxNames.length) { cadType = 'Lectra';  cadNames = plxNames }
+  else if (pdsNames.length) { cadType = 'PDS';     cadNames = pdsNames }
+  else if (tumNames.length) { cadType = 'Tuka';    cadNames = tumNames }
+  else if (optNames.length) { cadType = 'Optitex'; cadNames = optNames }
 
-  const knownExts = /\.(xlsx|tmp|plx|pds|tum)$/i
+  const knownExts = /\.(xlsx|tmp|plx|pds|tum|opt)$/i
   return {
     corrupt: false,
     xlsxNames: baseNames.filter((n) => /\.xlsx$/i.test(n)),
@@ -377,16 +379,24 @@ async function downloadFailureReport(file, result) {
 
 // Build a realistic in-memory package zip for a given style (shared by the demo
 // samples and the simulated Google Drive picker).
+const CAD_FORMATS = [
+  { ext: 'tmp', label: 'Gerber' },
+  { ext: 'plx', label: 'Lectra' },
+  { ext: 'pds', label: 'PDS' },
+  { ext: 'opt', label: 'Optitex' },
+]
+
 async function buildPackageZip(style, kind = 'valid') {
   const zip = new JSZip()
   if (kind !== 'no-xlsx') {
     zip.file(`${style.code}_BOM_SS25.xlsx`, new Uint8Array(randInt(20, 70) * 1024))
   }
   if (kind !== 'no-tmp') {
+    const fmt = CAD_FORMATS[randInt(0, CAD_FORMATS.length - 1)]
     const count = randInt(Math.min(4, style.pieces.length), style.pieces.length)
     sampleIndices(style.pieces.length, count).forEach((i) => {
       zip.file(
-        `${style.code}_${style.pieces[i]}_${SIZE_BREAK}_GRADED.tmp`,
+        `${style.code}_${style.pieces[i]}_${SIZE_BREAK}_GRADED.${fmt.ext}`,
         new Uint8Array(randInt(60, 280) * 1024),
       )
     })
@@ -572,33 +582,36 @@ export default function CadValidator() {
     }
   }
 
-  // ----- Sequential validation -----
+  // ----- Parallel validation -----
   const validate = async () => {
     if (!canValidate) return
     const pendingItems = queue.filter((q) => q.status === 'pending' && q.file)
     setIsValidating(true)
 
-    for (const item of pendingItems) {
-      setQueue((prev) => prev.map((q) => q.id === item.id ? { ...q, status: 'validating' } : q))
+    // Mark every pending item as validating at once so spinners start simultaneously.
+    setQueue((prev) => prev.map((q) =>
+      pendingItems.some((p) => p.id === q.id) ? { ...q, status: 'validating' } : q,
+    ))
 
+    await Promise.all(pendingItems.map(async (item) => {
       const [info] = await Promise.all([inspectArchive(item.file), delay(randInt(900, 1700))])
 
       if (info.corrupt) {
         const reason = 'Archive could not be read — it may be corrupt or not a valid .zip file.'
         setQueue((prev) => prev.map((q) => q.id === item.id ? { ...q, status: 'fail', reason, cadType: null } : q))
         recordCutplan({ name: item.name, status: 'fail', reason })
-        continue
+        return
       }
 
       const cadType = info.cadType
       const structural = []
       if (info.xlsxNames.length === 0) structural.push('Missing spreadsheet (.xlsx)')
-      if (info.cadNames.length === 0)  structural.push('Missing CAD files (.tmp / .plx / .pds / .tum)')
+      if (info.cadNames.length === 0)  structural.push('Missing CAD files (.tmp / .plx / .pds / .tum / .opt)')
       if (structural.length) {
         const reason = structural.join('; ')
         setQueue((prev) => prev.map((q) => q.id === item.id ? { ...q, status: 'fail', reason, cadType } : q))
         recordCutplan({ name: item.name, status: 'fail', reason })
-        continue
+        return
       }
 
       // Per-file failure simulation only applies to Gerber (.tmp) packages for now.
@@ -613,7 +626,7 @@ export default function CadValidator() {
         setQueue((prev) => prev.map((q) => q.id === item.id ? { ...q, status: 'pass', cadType } : q))
         recordCutplan({ name: item.name, status: 'pass' })
       }
-    }
+    }))
 
     setIsValidating(false)
   }

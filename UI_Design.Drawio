@@ -1,0 +1,284 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Cut Plan Validation — Activity Diagram" id="activity-diagram">
+    <mxGraphModel dx="5135" dy="2843" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1620" pageHeight="2840" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=20;fontStyle=1;fontColor=#1B3A5C;" value="Cut Plan Upload &amp; Validation — UML Activity Diagram" vertex="1">
+          <mxGeometry height="36" width="1520" x="40" y="16" as="geometry" />
+        </mxCell>
+        <mxCell id="lane_user" parent="1" style="swimlane;html=1;horizontal=1;startSize=38;fontSize=15;fontStyle=1;fillColor=#D6E4F0;swimlaneFillColor=#FBFDFE;strokeColor=#4A6FA5;fontColor=#1B3A5C;" value="User" vertex="1">
+          <mxGeometry height="2740" width="300" x="40" y="64" as="geometry" />
+        </mxCell>
+        <mxCell id="n_download_local" parent="lane_user" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EAF1F8;strokeColor=#4A6FA5;fontColor=#1B3A5C;fontSize=12;" value="Files are downloaded to the user&#39;s computer" vertex="1">
+          <mxGeometry height="60" width="200" x="50" y="2558" as="geometry" />
+        </mxCell>
+        <mxCell id="n_generate_output" parent="lane_user" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EAF6EA;strokeColor=#5E9E5E;fontColor=#1F5C1F;fontSize=12;" value="Generates output files" vertex="1">
+          <mxGeometry height="54" width="210" x="45" y="2425" as="geometry" />
+        </mxCell>
+        <mxCell id="e_generate_downloadlocal" edge="1" parent="lane_user" source="n_generate_output" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="n_download_local">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="lane_web" parent="1" style="swimlane;html=1;horizontal=1;startSize=38;fontSize=15;fontStyle=1;fillColor=#DCEFDC;swimlaneFillColor=#FCFEFC;strokeColor=#5E9E5E;fontColor=#1F5C1F;" value="Web Application" vertex="1">
+          <mxGeometry height="2740" width="560" x="362" y="64" as="geometry" />
+        </mxCell>
+        <mxCell id="n_login_error" parent="lane_web" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#FBE3E3;strokeColor=#C0504D;fontColor=#7A2622;fontSize=12;" value="Displays login error message" vertex="1">
+          <mxGeometry height="60" width="170" x="13" y="541" as="geometry" />
+        </mxCell>
+        <mxCell id="e_source_local" edge="1" parent="lane_web" source="d_source" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#4A6FA5;strokeWidth=1.5;endArrow=block;fontColor=#2B4C7A;fontStyle=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.963;exitY=0.48;exitDx=0;exitDy=0;exitPerimeter=0;" value="Local File System">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="366" y="909" />
+              <mxPoint x="449" y="909" />
+              <mxPoint x="449" y="1298" />
+              <mxPoint x="49" y="1298" />
+            </Array>
+            <mxPoint x="422" y="915" as="sourcePoint" />
+            <mxPoint x="49" y="1411" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="n_success_confirm" parent="lane_web" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#E2F3E2;strokeColor=#5E9E5E;fontColor=#1F5C1F;fontSize=12;fontStyle=1;" value="Displays success confirmation" vertex="1">
+          <mxGeometry height="54" width="210" x="243" y="2558" as="geometry" />
+        </mxCell>
+        <mxCell id="end_outer" parent="lane_web" style="ellipse;html=1;fillColor=#FFFFFF;strokeColor=#2D2D2D;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="43" width="46" x="325" y="2687.5" as="geometry" />
+        </mxCell>
+        <mxCell id="e_confirm_end" edge="1" parent="lane_web" source="n_success_confirm" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="end_outer">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="end_inner" parent="lane_web" style="ellipse;html=1;fillColor=#2D2D2D;strokeColor=#2D2D2D;" value="" vertex="1">
+          <mxGeometry height="28" width="28" x="334" y="2695" as="geometry" />
+        </mxCell>
+        <mxCell id="d_count" parent="lane_web" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#C9A23A;fontColor=#5A4410;fontSize=12;fontStyle=1;" value="File count&lt;br&gt;valid?" vertex="1">
+          <mxGeometry height="100" width="180" x="221" y="1471" as="geometry" />
+        </mxCell>
+        <mxCell id="n_count_error" parent="lane_web" style="rounded=1;arcSize=30;whiteSpace=wrap;html=1;fillColor=#FBE3E3;strokeColor=#C0504D;fontColor=#7A2622;fontSize=11;" value="Displays error:&lt;br&gt;&quot;At least 1 file is required&quot; /&lt;br&gt;&quot;Maximum 5 files are allowed&quot;" vertex="1">
+          <mxGeometry height="78" width="170" x="25" y="1482" as="geometry" />
+        </mxCell>
+        <mxCell id="e_count_no" edge="1" parent="lane_web" source="d_count" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#C0504D;strokeWidth=1.5;endArrow=block;fontColor=#C0504D;fontStyle=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="n_count_error" value="No">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="n_enable_validate" parent="lane_web" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EAF6EA;strokeColor=#5E9E5E;fontColor=#1F5C1F;fontSize=12;" value="Enables the &quot;Validate Files&quot; button" vertex="1">
+          <mxGeometry height="54" width="210" x="206" y="1643" as="geometry" />
+        </mxCell>
+        <mxCell id="e_count_yes" edge="1" parent="lane_web" source="d_count" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#2E7D32;strokeWidth=1.5;endArrow=block;fontColor=#2E7D32;fontStyle=1;fontSize=11;labelBackgroundColor=#ffffff;" target="n_enable_validate" value="Yes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="n_validate_files" parent="lane_web" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EAF6EA;strokeColor=#5E9E5E;fontColor=#1F5C1F;fontSize=12;" value="Validates all uploaded files" vertex="1">
+          <mxGeometry height="54" width="210" x="206" y="1817" as="geometry" />
+        </mxCell>
+        <mxCell id="d_valid" parent="lane_web" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#C9A23A;fontColor=#5A4410;fontSize=12;fontStyle=1;" value="Validation&lt;br&gt;successful?" vertex="1">
+          <mxGeometry height="100" width="180" x="221" y="1919" as="geometry" />
+        </mxCell>
+        <mxCell id="e_validatefiles_dvalid" edge="1" parent="lane_web" source="n_validate_files" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="d_valid">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="n_valid_error" parent="lane_web" style="rounded=1;arcSize=30;whiteSpace=wrap;html=1;fillColor=#FBE3E3;strokeColor=#C0504D;fontColor=#7A2622;fontSize=11;" value="Displays validation errors;&lt;br&gt;allows files to be replaced&lt;br&gt;or re-uploaded" vertex="1">
+          <mxGeometry height="78" width="170" x="13" y="1930" as="geometry" />
+        </mxCell>
+        <mxCell id="e_valid_no" edge="1" parent="lane_web" source="d_valid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#C0504D;strokeWidth=1.5;endArrow=block;fontColor=#C0504D;fontStyle=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="n_valid_error" value="No">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="n_valid_success" parent="lane_web" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#E2F3E2;strokeColor=#5E9E5E;fontColor=#1F5C1F;fontSize=12;" value="Displays validation success message&lt;br&gt;and enables output actions" vertex="1">
+          <mxGeometry height="60" width="210" x="209" y="2066" as="geometry" />
+        </mxCell>
+        <mxCell id="e_valid_yes" edge="1" parent="lane_web" source="d_valid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#2E7D32;strokeWidth=1.5;endArrow=block;fontColor=#2E7D32;fontStyle=1;fontSize=11;labelBackgroundColor=#ffffff;" target="n_valid_success" value="Yes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="d_output" parent="lane_web" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#C9A23A;fontColor=#5A4410;fontSize=12;fontStyle=1;" value="Output&lt;br&gt;destination?" vertex="1">
+          <mxGeometry height="100" width="180" x="224" y="2179" as="geometry" />
+        </mxCell>
+        <mxCell id="e_success_doutput" edge="1" parent="lane_web" source="n_valid_success" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="d_output">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="lane_auth" parent="1" style="swimlane;html=1;horizontal=1;startSize=38;fontSize=15;fontStyle=1;fillColor=#F6EBC9;swimlaneFillColor=#FFFEFB;strokeColor=#C9A23A;fontColor=#7A5C12;" value="Authentication Service" vertex="1">
+          <mxGeometry height="2740" width="300" x="903" y="62" as="geometry" />
+        </mxCell>
+        <mxCell id="d_auth" parent="lane_auth" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#C9A23A;fontColor=#5A4410;fontSize=12;fontStyle=1;" value="Authentication&lt;br&gt;successful?" vertex="1">
+          <mxGeometry height="100" width="180" x="58" y="523" as="geometry" />
+        </mxCell>
+        <mxCell id="n_validate_creds" parent="lane_auth" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#FBF3DD;strokeColor=#C9A23A;fontColor=#7A5C12;fontSize=12;" value="Validates credentials" vertex="1">
+          <mxGeometry height="54" width="200" x="48" y="440" as="geometry" />
+        </mxCell>
+        <mxCell id="e_validate_dauth" edge="1" parent="lane_auth" source="n_validate_creds" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="d_auth">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="n_upload_drive" parent="lane_auth" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EAF6EA;strokeColor=#5E9E5E;fontColor=#1F5C1F;fontSize=12;" value="Uploads generated files to Google Drive" vertex="1">
+          <mxGeometry height="54" width="210" x="40" y="2204" as="geometry" />
+        </mxCell>
+        <mxCell id="lane_drive" parent="1" style="swimlane;html=1;horizontal=1;startSize=38;fontSize=15;fontStyle=1;fillColor=#E7DAF5;swimlaneFillColor=#FDFBFE;strokeColor=#8A66B5;fontColor=#4A2E7A;" value="Google Drive" vertex="1">
+          <mxGeometry height="2740" width="360" x="1200" y="64" as="geometry" />
+        </mxCell>
+        <mxCell id="start" parent="1" style="ellipse;html=1;fillColor=#2D2D2D;strokeColor=#2D2D2D;" value="" vertex="1">
+          <mxGeometry height="42" width="42" x="170" y="120" as="geometry" />
+        </mxCell>
+        <mxCell id="n_launch" parent="1" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EAF1F8;strokeColor=#4A6FA5;fontColor=#1B3A5C;fontSize=12;" value="Launches the web application" vertex="1">
+          <mxGeometry height="54" width="200" x="90" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="n_login_screen" parent="1" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EAF6EA;strokeColor=#5E9E5E;fontColor=#1F5C1F;fontSize=12;" value="Displays the login screen" vertex="1">
+          <mxGeometry height="54" width="210" x="525" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="n_enter_creds" parent="1" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EAF1F8;strokeColor=#4A6FA5;fontColor=#1B3A5C;fontSize=12;" value="Enters credentials and clicks Login" vertex="1">
+          <mxGeometry height="54" width="200" x="90" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="n_send_auth" parent="1" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EAF6EA;strokeColor=#5E9E5E;fontColor=#1F5C1F;fontSize=12;" value="Sends authentication request" vertex="1">
+          <mxGeometry height="54" width="210" x="525" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="n_main_page" parent="1" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EAF6EA;strokeColor=#5E9E5E;fontColor=#1F5C1F;fontSize=12;" value="Displays the main application page" vertex="1">
+          <mxGeometry height="54" width="210" x="525" y="730" as="geometry" />
+        </mxCell>
+        <mxCell id="n_choose_source" parent="1" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EAF1F8;strokeColor=#4A6FA5;fontColor=#1B3A5C;fontSize=12;" value="Chooses the source of cut plan files" vertex="1">
+          <mxGeometry height="54" width="200" x="90" y="830" as="geometry" />
+        </mxCell>
+        <mxCell id="d_source" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#C9A23A;fontColor=#5A4410;fontSize=12;fontStyle=1;" value="File source?" vertex="1">
+          <mxGeometry height="100" width="180" x="540" y="925" as="geometry" />
+        </mxCell>
+        <mxCell id="n_connect_gd" parent="1" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EAF1F8;strokeColor=#4A6FA5;fontColor=#1B3A5C;fontSize=12;" value="Clicks &quot;Connect Google Drive&quot;" vertex="1">
+          <mxGeometry height="54" width="200" x="90" y="1050" as="geometry" />
+        </mxCell>
+        <mxCell id="n_request_gauth" parent="1" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EAF6EA;strokeColor=#5E9E5E;fontColor=#1F5C1F;fontSize=12;" value="Requests Google Drive authorization" vertex="1">
+          <mxGeometry height="54" width="210" x="525" y="1140" as="geometry" />
+        </mxCell>
+        <mxCell id="n_grant_perm" parent="1" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EAF1F8;strokeColor=#4A6FA5;fontColor=#1B3A5C;fontSize=12;" value="Grants permission" vertex="1">
+          <mxGeometry height="54" width="200" x="90" y="1250" as="geometry" />
+        </mxCell>
+        <mxCell id="n_return_token" parent="1" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#F1E9FA;strokeColor=#8A66B5;fontColor=#4A2E7A;fontSize=12;" value="Returns authorization token" vertex="1">
+          <mxGeometry height="54" width="210" x="1275" y="1250" as="geometry" />
+        </mxCell>
+        <mxCell id="n_browse" parent="1" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#F1E9FA;strokeColor=#8A66B5;fontColor=#4A2E7A;fontSize=12;" value="Browses and selects files from Google Drive" vertex="1">
+          <mxGeometry height="60" width="210" x="1275" y="1350" as="geometry" />
+        </mxCell>
+        <mxCell id="n_select_files" parent="1" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EAF1F8;strokeColor=#4A6FA5;fontColor=#1B3A5C;fontSize=12;" value="Selects cut plan files&lt;br&gt;&lt;font style=&#39;font-size:10px;color:#5A6A7A;&#39;&gt;(1 to 5 files)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="60" width="200" x="90" y="1450" as="geometry" />
+        </mxCell>
+        <mxCell id="n_click_validate" parent="1" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EAF1F8;strokeColor=#4A6FA5;fontColor=#1B3A5C;fontSize=12;" value="Clicks &quot;Validate Files&quot;" vertex="1">
+          <mxGeometry height="54" width="200" x="90" y="1790" as="geometry" />
+        </mxCell>
+        <mxCell id="n_click_download" parent="1" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#EAF1F8;strokeColor=#4A6FA5;fontColor=#1B3A5C;fontSize=12;" value="Clicks Download" vertex="1">
+          <mxGeometry height="54" width="200" x="90" y="2360" as="geometry" />
+        </mxCell>
+        <mxCell id="n_drive_confirm" parent="1" style="rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#F1E9FA;strokeColor=#8A66B5;fontColor=#4A2E7A;fontSize=12;" value="Stores files and confirms upload" vertex="1">
+          <mxGeometry height="54" width="210" x="1275" y="2450" as="geometry" />
+        </mxCell>
+        <mxCell id="e_start" edge="1" parent="1" source="start" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="n_launch">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_launch_login" edge="1" parent="1" source="n_launch" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="n_login_screen">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_login_enter" edge="1" parent="1" source="n_login_screen" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;exitX=0.5;exitY=1;exitDx=0;exitDy=0;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="630" y="277" />
+              <mxPoint x="190" y="277" />
+            </Array>
+            <mxPoint x="624" y="263" as="sourcePoint" />
+            <mxPoint x="190" y="311" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_enter_send" edge="1" parent="1" source="n_enter_creds" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="n_send_auth">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_send_validate" edge="1" parent="1" source="n_send_auth" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="n_validate_creds">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_loginerr_enter" edge="1" parent="1" source="n_login_error" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#C0504D;strokeWidth=1.5;endArrow=block;dashed=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="n_enter_creds">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="185" y="364" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_auth_yes" edge="1" parent="1" source="d_auth" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#2E7D32;strokeWidth=1.5;endArrow=block;fontColor=#2E7D32;fontStyle=1;fontSize=11;labelBackgroundColor=#ffffff;entryX=1;entryY=0.5;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="n_main_page" value="Yes">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1050" y="757" />
+            </Array>
+            <mxPoint x="1050" y="700" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_main_choose" edge="1" parent="1" source="n_main_page" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="n_choose_source">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_choose_dsource" edge="1" parent="1" source="n_choose_source" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="d_source">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_source_gd" edge="1" parent="1" source="d_source" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#8A66B5;strokeWidth=1.5;endArrow=block;fontColor=#5A3E8A;fontStyle=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_connect_gd" value="Google Drive">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_connect_request" edge="1" parent="1" source="n_connect_gd" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="n_request_gauth">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_request_grant" edge="1" parent="1" source="n_request_gauth" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="n_grant_perm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_grant_token" edge="1" parent="1" source="n_grant_perm" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="n_return_token">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_token_browse" edge="1" parent="1" source="n_return_token" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="n_browse">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_browse_select" edge="1" parent="1" source="n_browse" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="n_select_files">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_select_dcount" edge="1" parent="1" source="n_select_files" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="d_count">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_counterr_select" edge="1" parent="1" source="n_count_error" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#C0504D;strokeWidth=1.5;endArrow=block;dashed=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="n_select_files">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="320" y="1579" />
+              <mxPoint x="320" y="1500" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_enable_click" edge="1" parent="1" source="n_enable_validate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_click_validate">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_click_validatefiles" edge="1" parent="1" source="n_click_validate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="n_validate_files">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_validerr_select" edge="1" parent="1" source="n_valid_error" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#C0504D;strokeWidth=1.5;endArrow=block;dashed=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="n_select_files">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="60" y="2019" />
+              <mxPoint x="60" y="1480" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_output_local" edge="1" parent="1" source="d_output" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#4A6FA5;strokeWidth=1.5;endArrow=block;fontColor=#2B4C7A;fontStyle=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="n_click_download" value="Download to Local Drive">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_download_generate" edge="1" parent="1" source="n_click_download" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="n_generate_output">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_output_drive" edge="1" parent="1" source="d_output" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#8A66B5;strokeWidth=1.5;endArrow=block;fontColor=#5A3E8A;fontStyle=1;fontSize=11;labelBackgroundColor=#ffffff;" target="n_upload_drive" value="Save to Google Drive">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_upload_driveconfirm" edge="1" parent="1" source="n_upload_drive" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;" target="n_drive_confirm">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_driveconfirm_confirm" edge="1" parent="1" source="n_drive_confirm" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#333333;strokeWidth=1.5;endArrow=block;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.998;entryY=0.636;entryDx=0;entryDy=0;entryPerimeter=0;" target="n_success_confirm">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1380" y="2657" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="12" edge="1" parent="1" source="d_auth" style="endArrow=classic;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#FF0000;" target="n_login_error" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="964" y="640" as="sourcePoint" />
+            <mxPoint x="529" y="637" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="13" connectable="0" parent="12" style="edgeLabel;resizable=0;html=1;;align=center;verticalAlign=middle;strokeColor=#CC0000;" value="No" vertex="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="20" edge="1" parent="1" source="n_download_local" style="endArrow=classic;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="n_success_confirm" value="">
+          <mxGeometry height="50" relative="1" width="50" as="geometry">
+            <mxPoint x="784" y="2550" as="sourcePoint" />
+            <mxPoint x="834" y="2500" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
